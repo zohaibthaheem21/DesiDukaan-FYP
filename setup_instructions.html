@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DesiDukaan Setup Instructions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #DC143C;
+        }
+        .step {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .credentials {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #28a745;
+        }
+        .warning {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+        }
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .btn {
+            display: inline-block;
+            background: #DC143C;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏪 DesiDukaan Setup Instructions</h1>
+    
+    <div class="step">
+        <h2>Step 1: Start XAMPP Services</h2>
+        <p>Make sure the following XAMPP services are running:</p>
+        <ul>
+            <li>✅ Apache</li>
+            <li>✅ MySQL</li>
+        </ul>
+    </div>
+
+    <div class="step">
+        <h2>Step 2: Setup Database</h2>
+        <p>Choose one of the following methods:</p>
+        
+        <h3>Method A: Using phpMyAdmin (Recommended)</h3>
+        <ol>
+            <li>Open <a href="http://localhost/phpmyadmin" target="_blank">phpMyAdmin</a></li>
+            <li>Click on "Import" tab</li>
+            <li>Choose file: <code>database/setup_clean.sql</code></li>
+            <li>Click "Go" to import</li>
+        </ol>
+        
+        <h3>Method B: Manual SQL Execution</h3>
+        <ol>
+            <li>Open <a href="http://localhost/phpmyadmin" target="_blank">phpMyAdmin</a></li>
+            <li>Click on "SQL" tab</li>
+            <li>Copy and paste the contents of <code>database/setup_clean.sql</code></li>
+            <li>Click "Go" to execute</li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <h2>Step 3: Create Upload Directories</h2>
+        <p>Make sure these directories exist and are writable:</p>
+        <ul>
+            <li><code>uploads/</code></li>
+            <li><code>uploads/cnic/</code></li>
+            <li><code>uploads/logos/</code></li>
+            <li><code>uploads/products/</code></li>
+        </ul>
+    </div>
+
+    <div class="step">
+        <h2>Step 4: Access the Application</h2>
+        <p>Once the database is set up, you can access the application:</p>
+        <a href="http://localhost/DesiDukaan/" class="btn">🚀 Launch DesiDukaan</a>
+    </div>
+
+    <div class="credentials">
+        <h2>🔑 Admin Login Credentials</h2>
+        <p><strong>Email:</strong> admin@desidukaan.com</p>
+        <p><strong>Password:</strong> password</p>
+    </div>
+
+    <div class="warning">
+        <h2>⚠️ Important Security Note</h2>
+        <p>Change the admin password immediately after first login!</p>
+        <p>Delete this setup file and <code>setup.php</code> after installation.</p>
+    </div>
+
+    <div class="step">
+        <h2>🧪 Testing the Application</h2>
+        <h3>Test Customer Registration:</h3>
+        <ol>
+            <li>Go to the application</li>
+            <li>Click "Register as Customer"</li>
+            <li>Fill in the form and submit</li>
+            <li>Login with your credentials</li>
+        </ol>
+
+        <h3>Test Seller Registration:</h3>
+        <ol>
+            <li>Click "Register as Seller"</li>
+            <li>Fill in all required fields including CNIC and mobile</li>
+            <li>Create your shop with required documents</li>
+            <li>Wait for admin approval</li>
+        </ol>
+
+        <h3>Test Admin Panel:</h3>
+        <ol>
+            <li>Login with admin credentials</li>
+            <li>Review pending shop requests</li>
+            <li>Approve or reject shops</li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <h2>🎨 Features Included</h2>
+        <ul>
+            <li>✅ Animated splash screen with logo</li>
+            <li>✅ English/Sindhi language toggle</li>
+            <li>✅ Customer registration and dashboard</li>
+            <li>✅ Seller registration and shop creation</li>
+            <li>✅ Admin panel for shop approval</li>
+            <li>✅ File upload for CNIC and shop logos</li>
+            <li>✅ Responsive design for all devices</li>
+            <li>✅ Secure authentication and validation</li>
+            <li>✅ Role-based access control</li>
+        </ul>
+    </div>
+
+    <div class="step">
+        <h2>📞 Support</h2>
+        <p>If you encounter any issues:</p>
+        <ol>
+            <li>Check that XAMPP services are running</li>
+            <li>Verify database connection in <code>config/database.php</code></li>
+            <li>Check PHP error logs</li>
+            <li>Ensure upload directories have proper permissions</li>
+        </ol>
+    </div>
+</body>
+</html>
