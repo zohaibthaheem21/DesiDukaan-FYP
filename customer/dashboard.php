@@ -145,8 +145,47 @@ try {
         </div>
     </div>
 
+<?php
+// Include Analytics Engine for AI Product Recommendations
+require_once '../includes/analytics_engine.php';
+$analytics = AnalyticsEngine::getInstance();
+$ai_recommendations = $analytics->getRecommendedProducts($_SESSION['user_id'], 4);
+?>
+
     <!-- Main Content -->
     <div class="container main-content">
+        <?php if (!empty($ai_recommendations) && empty($search)): ?>
+            <!-- AI Recommended Products Banner -->
+            <section class="products-section" style="margin-bottom: 40px; background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%); padding: 25px; border-radius: 12px; border: 1px solid #ffcdd2;">
+                <div class="section-header">
+                    <h2 class="section-title" style="color: #DC143C; display: flex; align-items: center; gap: 8px;">
+                        <span>🤖</span> AI-Powered Recommended for You
+                        <span style="font-size: 11px; background: #DC143C; color: #fff; padding: 2px 8px; border-radius: 12px; font-weight: 600;">Collaborative Filtering</span>
+                    </h2>
+                    <p class="section-subtitle">Products personalized based on your browsing & purchasing patterns</p>
+                </div>
+                <div class="products-grid-modern">
+                    <?php foreach ($ai_recommendations as $rec_product): ?>
+                        <div class="product-card-ecommerce" style="border: 1px solid #ffcdd2;">
+                            <div class="product-content-modern" style="padding: 15px;">
+                                <span class="badge" style="background: #e8f5e9; color: #2e7d32; font-size: 11px; margin-bottom: 5px; display: inline-block;">
+                                    Match Score: <?php echo round($rec_product['recommendation_score'] * 100); ?>%
+                                </span>
+                                <h3 class="product-title-modern"><?php echo htmlspecialchars($rec_product['title']); ?></h3>
+                                <p class="product-shop">by <?php echo htmlspecialchars($rec_product['shop_name']); ?></p>
+                                <div class="product-pricing" style="margin-top: 10px;">
+                                    <span class="product-price-modern">Rs. <?php echo number_format($rec_product['price'], 2); ?></span>
+                                </div>
+                                <button class="btn-modern btn-add-cart" onclick="ajaxManager.addToCart(<?php echo $rec_product['id']; ?>)" style="margin-top: 10px; width: 100%;">
+                                    Add to Cart
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        <?php endif; ?>
+
         <!-- Products Section -->
         <section class="products-section">
             <div class="section-header">

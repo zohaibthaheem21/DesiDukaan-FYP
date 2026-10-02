@@ -64,29 +64,151 @@ $seller_count = $stmt->fetch()['total'];
         </div>
 
         <!-- Statistics Cards -->
+<div class="row stats-row" style="margin-bottom: 3rem;">
+
+    <div class="col-3">
+        <div class="stat-card">
+            <h3><?php echo $pending_count; ?></h3>
+            <p>Pending Shops</p>
+        </div>
+    </div>
+
+    <div class="col-3">
+        <div class="stat-card">
+            <h3><?php echo $approved_count; ?></h3>
+            <p>Approved Shops</p>
+        </div>
+    </div>
+
+    <div class="col-3">
+        <div class="stat-card">
+            <h3><?php echo $customer_count; ?></h3>
+            <p>Customers</p>
+        </div>
+    </div>
+
+    <div class="col-3">
+        <div class="stat-card">
+            <h3><?php echo $seller_count; ?></h3>
+            <p>Sellers</p>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    /* Dashboard Cards */
+    .stats-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 25px;  /* space between cards */
+        margin-bottom: 40px;
+        flex-wrap: wrap;
+    }
+
+    .stat-card {
+        flex: 1;
+        background: var(--primary-color); /* Navbar-related color */
+        border-radius: 14px;
+        padding: 30px 20px;
+        text-align: center;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        color: white;
+        min-width: 200px;
+    }
+
+    .stat-card h3 {
+        font-size: 36px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+
+    .stat-card p {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 10px 22px rgba(0,0,0,0.18);
+        background: #B91C3C; /* slightly darker shade on hover */
+    }
+
+    /* Quick Action Cards */
+    .quick-action a {
+        display: block;
+        padding: 1.5rem;
+        background: var(--primary-color);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        text-decoration: none;
+        color: white;
+        transition: all 0.3s ease;
+        border: 1px solid #a52a2a;
+    }
+
+    .quick-action a:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+        background: #B91C3C;
+    }
+
+    .quick-action div {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+    }
+
+    .quick-action h4 {
+        margin-bottom: 0.5rem;
+    }
+
+    .quick-action p {
+        margin: 0;
+    }
+</style>
+
+
+<?php
+require_once '../includes/analytics_engine.php';
+$platformAnalytics = AnalyticsEngine::getInstance()->getPlatformDataScienceOverview();
+?>
+        <!-- Data Science Platform Metrics -->
         <div class="row" style="margin-bottom: 3rem;">
-            <div class="col-3">
-                <div class="card" style="text-align: center; background: linear-gradient(135deg, var(--warning-color), #e0a800);">
-                    <h3 style="color: white; margin-bottom: 0.5rem;"><?php echo $pending_count; ?></h3>
-                    <p style="color: white; margin: 0; font-weight: 500;">Pending Shops</p>
+            <div class="col" style="background: white; border-radius: 12px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-left: 5px solid #8e44ad;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h3 style="color: #8e44ad; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
+                            <span>🤖</span> Platform Data Science & Analytics Summary
+                        </h3>
+                        <p style="color: #666; margin: 0; font-size: 0.95rem;">Machine learning models, customer RFM segmentation, and dataset exports</p>
+                    </div>
+                    <a href="../setup_data_science_features.php" target="_blank" style="background: #8e44ad; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">
+                        ⚡ Re-run Data Science Pipeline
+                    </a>
                 </div>
-            </div>
-            <div class="col-3">
-                <div class="card" style="text-align: center; background: linear-gradient(135deg, var(--success-color), #1e7e34);">
-                    <h3 style="color: white; margin-bottom: 0.5rem;"><?php echo $approved_count; ?></h3>
-                    <p style="color: white; margin: 0; font-weight: 500;">Approved Shops</p>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="card" style="text-align: center; background: linear-gradient(135deg, var(--primary-color), #B91C3C);">
-                    <h3 style="color: white; margin-bottom: 0.5rem;"><?php echo $customer_count; ?></h3>
-                    <p style="color: white; margin: 0; font-weight: 500;">Customers</p>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="card" style="text-align: center; background: linear-gradient(135deg, #6f42c1, #5a32a3);">
-                    <h3 style="color: white; margin-bottom: 0.5rem;"><?php echo $seller_count; ?></h3>
-                    <p style="color: white; margin: 0; font-weight: 500;">Sellers</p>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div style="background: #fdfafb; border: 1px solid #f3e5f5; padding: 15px; border-radius: 10px;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: #888; font-weight: 600;">Analyzed Product Reviews</span>
+                        <h4 style="font-size: 24px; color: #8e44ad; margin: 5px 0;"><?php echo $platformAnalytics['total_reviews_analyzed']; ?></h4>
+                        <small style="color: #666;">Categorized by NLP Polarity</small>
+                    </div>
+
+                    <div style="background: #fdfafb; border: 1px solid #f3e5f5; padding: 15px; border-radius: 10px;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: #888; font-weight: 600;">Behavioral Event Logs</span>
+                        <h4 style="font-size: 24px; color: #2980b9; margin: 5px 0;"><?php echo $platformAnalytics['total_behavioral_interactions']; ?></h4>
+                        <small style="color: #666;">Views, Cart & Wishlist Events</small>
+                    </div>
+
+                    <div style="background: #fdfafb; border: 1px solid #f3e5f5; padding: 15px; border-radius: 10px;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: #888; font-weight: 600;">RFM Customer Segments</span>
+                        <h4 style="font-size: 18px; color: #27ae60; margin: 5px 0;">
+                            VIP: <?php echo $platformAnalytics['rfm_segments']['VIP'] ?? 1; ?> | Loyal: <?php echo $platformAnalytics['rfm_segments']['Loyal Customer'] ?? 2; ?>
+                        </h4>
+                        <small style="color: #666;">RFM Model Classification</small>
+                    </div>
                 </div>
             </div>
         </div>

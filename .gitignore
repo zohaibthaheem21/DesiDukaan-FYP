@@ -1,3 +1,14 @@
-.md
-/.md
-*.md
+# Ignore dependencies & log files
+/vendor/
+/node_modules/
+*.log
+
+# Ignore OS junk files
+.DS_Store
+Thumbs.db
+
+# Keep uploads folder structure but ignore uploaded files if needed
+/uploads/cnic/*
+/uploads/logos/*
+/uploads/products/*
+!/uploads/.gitkeep

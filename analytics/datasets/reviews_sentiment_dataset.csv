@@ -1,0 +1,6 @@
+review_id,product_id,customer_id,rating,review_text,sentiment_label,sentiment_score
+101,1,501,5,Absolutely love this handicraft! The quality and fabric are outstanding.,positive,0.92
+102,1,502,5,Beautiful product with rich traditional colors.,positive,0.88
+103,2,503,3,Decent quality product. Delivery took a bit long.,neutral,0.15
+104,3,504,2,Fabric quality was lower than expected. Color faded.,negative,-0.55
+105,4,505,5,Exquisite artisan craftsmanship! Super fast shipping.,positive,0.95

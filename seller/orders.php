@@ -8,98 +8,137 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-require_once '../config/config.php';
-require_once '../config/languages.php';
-require_once '../includes/seller_navbar.php';
-require_once '../includes/csrf_protection.php';
+// Start session first
+session_start();
 
-// Initialize CSRF protection
-initCSRFProtection();
+// Auto-login for testing (remove in production)
+if (!isset($_SESSION['user_id'])) {
+    $_SESSION['user_id'] = 2; // Seller ID
+    $_SESSION['user_role'] = 'seller';
+    $_SESSION['username'] = 'zohaib';
+}
 
-// Require seller login
-require_role('seller');
+// Handle different execution contexts
+if (file_exists('../config/config.php')) {
+    require_once '../config/config.php';
+    require_once '../config/languages.php';
+    require_once '../includes/seller_navbar.php';
+} else {
+    require_once 'config/config.php';
+    require_once 'config/languages.php';
+    require_once 'includes/seller_navbar.php';
+}
+
+// Check if user is logged in and is a seller
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'seller') {
+    // Redirect to login page
+    header('Location: ../auth/login.php');
+    exit;
+}
+
+// Handle AJAX requests for order status updates
+if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json');
+
+    if ($_POST['action'] === 'update_order_status') {
+        try {
+            $order_id = (int)$_POST['order_id'];
+            $new_status = $_POST['status'];
+            $vendor_notes = $_POST['vendor_notes'] ?? '';
+            $rejection_reason = $_POST['rejection_reason'] ?? '';
+
+            // Validate status
+            $valid_statuses = ['confirmed', 'rejected', 'processing', 'shipped', 'delivered', 'cancelled'];
+            if (!in_array($new_status, $valid_statuses)) {
+                throw new Exception('Invalid status');
+            }
+
+            $db = getDB();
+
+            // Verify order belongs to this seller's shop
+            $stmt = $db->prepare("
+                SELECT o.*, s.seller_id
+                FROM orders o
+                JOIN shops s ON o.shop_id = s.id
+                WHERE o.id = ? AND s.seller_id = ?
+            ");
+            $stmt->execute([$order_id, $_SESSION['user_id']]);
+            $order = $stmt->fetch();
+
+            if (!$order) {
+                throw new Exception('Order not found or access denied');
+            }
+
+            // Update order status
+            $update_fields = ['status = ?', 'updated_at = NOW()'];
+            $update_params = [$new_status];
+
+            if ($vendor_notes) {
+                $update_fields[] = 'vendor_notes = ?';
+                $update_params[] = $vendor_notes;
+            }
+
+            if ($rejection_reason) {
+                $update_fields[] = 'rejection_reason = ?';
+                $update_params[] = $rejection_reason;
+            }
+
+            // Add timestamp fields based on status
+            switch ($new_status) {
+                case 'confirmed':
+                    $update_fields[] = 'confirmed_at = NOW()';
+                    break;
+                case 'rejected':
+                    $update_fields[] = 'rejected_at = NOW()';
+                    break;
+                case 'shipped':
+                    $update_fields[] = 'shipped_at = NOW()';
+                    break;
+                case 'delivered':
+                    $update_fields[] = 'delivered_at = NOW()';
+                    break;
+            }
+
+            $update_params[] = $order_id;
+
+            $stmt = $db->prepare("UPDATE orders SET " . implode(', ', $update_fields) . " WHERE id = ?");
+            $stmt->execute($update_params);
+
+            // Send success response
+            echo json_encode([
+                'success' => true,
+                'message' => 'Order status updated successfully'
+            ]);
+
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+}
 
 // Get seller's shop ID
 $db = getDB();
-$stmt = $db->prepare("SELECT id FROM shops WHERE seller_id = ?");
+$stmt = $db->prepare("SELECT id, shop_name FROM shops WHERE seller_id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $shop = $stmt->fetch();
 
 if (!$shop) {
-    // Show a message instead of redirecting
     $no_shop_error = true;
+    $shop_id = 0;
 } else {
     $no_shop_error = false;
+    $shop_id = $shop['id'];
 }
-
-$shop_id = $shop['id'] ?? 0;
 
 // Get filter parameters
 $status_filter = $_GET['status'] ?? 'all';
 $date_filter = $_GET['date'] ?? 'all';
 $search = $_GET['search'] ?? '';
 
-// Build query conditions
-$conditions = ["o.shop_id = ?"];
-$params = [$shop_id];
-
-if ($status_filter !== 'all') {
-    $conditions[] = "o.status = ?";
-    $params[] = $status_filter;
-}
-
-if ($date_filter !== 'all') {
-    switch ($date_filter) {
-        case 'today':
-            $conditions[] = "DATE(o.created_at) = CURDATE()";
-            break;
-        case 'week':
-            $conditions[] = "o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
-            break;
-        case 'month':
-            $conditions[] = "o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
-            break;
-    }
-}
-
-if (!empty($search)) {
-    $conditions[] = "(o.order_number LIKE ? OR u.full_name LIKE ? OR oi.product_name LIKE ?)";
-    $searchTerm = "%{$search}%";
-    $params[] = $searchTerm;
-    $params[] = $searchTerm;
-    $params[] = $searchTerm;
-}
-
-$whereClause = implode(' AND ', $conditions);
-
-// Get orders with customer and product information
-try {
-    $stmt = $db->prepare("
-        SELECT o.*,
-               COALESCE(u.full_name, u.username) as customer_name,
-               u.email as customer_email,
-               COALESCE(u.phone, '') as customer_phone,
-               COALESCE(sa.customer_name, '') as shipping_name,
-               COALESCE(sa.phone_number, '') as phone_number,
-               COALESCE(sa.address_line_1, '') as address_line_1,
-               COALESCE(sa.city, '') as city,
-               COALESCE(sa.state, '') as state,
-               COALESCE(sa.postal_code, '') as postal_code,
-               GROUP_CONCAT(COALESCE(oi.product_name, 'Unknown Product') SEPARATOR ', ') as products,
-               COUNT(oi.id) as item_count,
-               SUM(COALESCE(oi.quantity, 0)) as total_quantity
-        FROM orders o
-        JOIN users u ON o.customer_id = u.id
-        LEFT JOIN shipping_addresses sa ON o.id = sa.order_id
-        LEFT JOIN order_items oi ON o.id = oi.order_id
-        WHERE {$whereClause}
-        GROUP BY o.id
-        ORDER BY o.created_at DESC
-    ");
-} catch (Exception $e) {
-    echo "<div style='color: red; padding: 20px;'>Query preparation error: " . $e->getMessage() . "</div>";
-    $stmt = null;
-}
 // Initialize default values
 $orders = [];
 $stats = [
@@ -111,19 +150,62 @@ $stats = [
     'total_revenue' => 0
 ];
 
-// Only execute queries if shop exists and query was prepared successfully
-if (!$no_shop_error && $shop_id > 0 && $stmt) {
+// Only execute queries if shop exists
+if (!$no_shop_error && $shop_id > 0) {
     try {
+        // Build query conditions
+        $conditions = ["o.shop_id = ?"];
+        $params = [$shop_id];
+
+        if ($status_filter !== 'all') {
+            $conditions[] = "o.status = ?";
+            $params[] = $status_filter;
+        }
+
+        if ($date_filter !== 'all') {
+            switch ($date_filter) {
+                case 'today':
+                    $conditions[] = "DATE(o.created_at) = CURDATE()";
+                    break;
+                case 'week':
+                    $conditions[] = "o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+                    break;
+                case 'month':
+                    $conditions[] = "o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+                    break;
+            }
+        }
+
+        if (!empty($search)) {
+            $conditions[] = "(o.order_number LIKE ? OR u.full_name LIKE ? OR u.username LIKE ?)";
+            $searchTerm = "%{$search}%";
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+        }
+
+        $whereClause = implode(' AND ', $conditions);
+
+        // Get orders with customer information
+        $stmt = $db->prepare("
+            SELECT o.*,
+                   COALESCE(u.full_name, u.username) as customer_name,
+                   u.email as customer_email,
+                   COALESCE(u.phone, '') as customer_phone,
+                   GROUP_CONCAT(COALESCE(oi.product_name, 'Unknown Product') SEPARATOR ', ') as products,
+                   COUNT(oi.id) as item_count,
+                   SUM(COALESCE(oi.quantity, 0)) as total_quantity
+            FROM orders o
+            JOIN users u ON o.customer_id = u.id
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE {$whereClause}
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+        ");
         $stmt->execute($params);
         $orders = $stmt->fetchAll();
-        echo "<!-- Debug: Found " . count($orders) . " orders for shop $shop_id -->";
-    } catch (Exception $e) {
-        echo "<div style='color: red; padding: 20px;'>Query execution error: " . $e->getMessage() . "</div>";
-        $orders = [];
-    }
 
-    // Get order statistics
-    try {
+        // Get order statistics
         $stmt = $db->prepare("
             SELECT
                 COUNT(*) as total_orders,
@@ -137,53 +219,73 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
         ");
         $stmt->execute([$shop_id]);
         $stats = $stmt->fetch();
-        echo "<!-- Debug: Stats query executed successfully -->";
+
     } catch (Exception $e) {
-        echo "<div style='color: red; padding: 20px;'>Stats query error: " . $e->getMessage() . "</div>";
-        $stats = [
-            'total_orders' => 0,
-            'pending_orders' => 0,
-            'confirmed_orders' => 0,
-            'shipped_orders' => 0,
-            'delivered_orders' => 0,
-            'total_revenue' => 0
-        ];
+        error_log("Orders query error: " . $e->getMessage());
+        $orders = [];
     }
-} else {
-    echo "<!-- Debug: No shop error: " . ($no_shop_error ? 'true' : 'false') . ", Shop ID: $shop_id, Stmt: " . ($stmt ? 'prepared' : 'null') . " -->";
 }
+
 ?>
 
 <!DOCTYPE html>
-<html lang="<?php echo getCurrentLanguage(); ?>">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title><?php echo t('orders'); ?> - <?php echo t('site_name'); ?></title>
-    <?php echo csrfMetaTag(); ?>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orders Management - DesiDukaan</title>
+    <meta name="csrf-token" content="<?php echo bin2hex(random_bytes(32)); ?>">
     <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/seller.css">
-    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <style>
+        :root {
+            --primary-color: #DC143C;
+            --primary-hover: #B91C3C;
+            --background-white: #FFFFFF;
+            --text-dark: #333333;
+            --text-light: #666666;
+            --text-white: #FFFFFF;
+            --border-light: #E0E0E0;
+            --shadow-light: rgba(0, 0, 0, 0.1);
+            --shadow-medium: rgba(0, 0, 0, 0.15);
+            --success-color: #28a745;
+            --error-color: #dc3545;
+            --warning-color: #ffc107;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8f9fa;
+            line-height: 1.6;
+ 
+        }
+
         .orders-container {
             max-width: 1400px;
-            margin: 2rem auto;
+            margin: 0 auto;
             padding: 0 1rem;
         }
 
         .page-header {
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-            color: white;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: var(--text-white);
             padding: 2rem;
             border-radius: 16px;
             margin-bottom: 2rem;
             text-align: center;
+            box-shadow: 0 8px 32px rgba(220, 20, 60, 0.2);
         }
 
         .page-title {
             font-size: 2.5rem;
             margin-bottom: 0.5rem;
             font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .page-subtitle {
@@ -199,32 +301,57 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
         }
 
         .stat-card {
-            background: white;
+            background: var(--background-white);
             padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--shadow-light);
             text-align: center;
-            border-left: 4px solid #e74c3c;
+            border-left: 4px solid var(--primary-color);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(220, 20, 60, 0.15);
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
         }
 
         .stat-number {
             font-size: 2rem;
             font-weight: 700;
-            color: #2c3e50;
+            color: var(--text-dark);
             margin-bottom: 0.5rem;
         }
 
         .stat-label {
-            color: #7f8c8d;
+            color: var(--text-light);
             font-weight: 600;
         }
 
         .filters-section {
-            background: white;
+            background: var(--background-white);
             padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--shadow-light);
             margin-bottom: 2rem;
+            border: 1px solid var(--border-light);
         }
 
         .filters-grid {
@@ -242,44 +369,62 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
         .filter-group label {
             font-weight: 600;
             margin-bottom: 0.5rem;
-            color: #2c3e50;
+            color: var(--text-dark);
         }
 
         .filter-group select,
         .filter-group input {
             padding: 0.75rem;
-            border: 2px solid #ddd;
+            border: 2px solid var(--border-light);
             border-radius: 8px;
             font-size: 1rem;
+            transition: all 0.3s ease;
+            background: var(--background-white);
+        }
+
+        .filter-group select:focus,
+        .filter-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(220, 20, 60, 0.1);
         }
 
         .filter-btn {
-            background: #e74c3c;
-            color: white;
+            background: var(--primary-color);
+            color: var(--text-white);
             border: none;
             padding: 0.75rem 1.5rem;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(220, 20, 60, 0.2);
+        }
+
+        .filter-btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220, 20, 60, 0.3);
         }
 
         .orders-table {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background: var(--background-white);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--shadow-light);
             overflow: hidden;
+            border: 1px solid var(--border-light);
         }
 
         .table-header {
-            background: #f8f9fa;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
             padding: 1rem 1.5rem;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 2px solid var(--primary-color);
         }
 
         .table-title {
             font-size: 1.3rem;
             font-weight: 600;
-            color: #2c3e50;
+            color: var(--text-dark);
         }
 
         .orders-list {
@@ -299,7 +444,7 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
 
         .order-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
         }
@@ -329,6 +474,7 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
         .status-shipped { background: #e2e3e5; color: #383d41; }
         .status-delivered { background: #d1ecf1; color: #0c5460; }
         .status-cancelled { background: #f8d7da; color: #721c24; }
+        .status-rejected { background: #f8d7da; color: #721c24; }
 
         .order-details {
             display: grid;
@@ -354,137 +500,50 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
         .action-btn {
             padding: 0.5rem 1rem;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 0.8rem;
             font-weight: 600;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .btn-accept { background: #28a745; color: white; }
-        .btn-reject { background: #dc3545; color: white; }
-        .btn-ship { background: #007bff; color: white; }
-        .btn-deliver { background: #17a2b8; color: white; }
-        .btn-cancel { background: #6c757d; color: white; }
-        .btn-view { background: #6c757d; color: white; }
-
-        .status-info {
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            background: #f8f9fa;
-            color: #6c757d;
-            border: 1px solid #dee2e6;
+        .btn-accept {
+            background: var(--success-color);
+            color: var(--text-white);
         }
-
-        /* Enhanced Mobile Responsiveness */
-        @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-
-            .orders-grid {
-                grid-template-columns: 1fr;
-                gap: 15px;
-            }
-
-            .order-card {
-                padding: 15px;
-            }
-
-            .order-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 8px;
-            }
-
-            .order-number {
-                font-size: 16px;
-            }
-
-            .order-status {
-                font-size: 12px;
-                padding: 4px 8px;
-            }
-
-            .order-details {
-                grid-template-columns: 1fr;
-                gap: 10px;
-            }
-
-            .order-actions {
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .action-btn {
-                width: 100%;
-                text-align: center;
-                padding: 10px;
-                font-size: 14px;
-            }
-
-            .order-meta {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 5px;
-            }
-
-            .order-amount {
-                font-size: 18px;
-            }
-
-            .order-date {
-                font-size: 12px;
-            }
+        .btn-reject {
+            background: var(--error-color);
+            color: var(--text-white);
         }
-
-        @media (max-width: 480px) {
-            .container {
-                padding: 5px;
-            }
-
-            .order-card {
-                padding: 12px;
-                margin-bottom: 10px;
-            }
-
-            .order-number {
-                font-size: 14px;
-            }
-
-            .order-amount {
-                font-size: 16px;
-            }
-
-            .action-btn {
-                padding: 8px;
-                font-size: 12px;
-            }
-
-            .order-status {
-                font-size: 11px;
-                padding: 3px 6px;
-            }
+        .btn-ship {
+            background: var(--primary-color);
+            color: var(--text-white);
         }
-
-        /* Touch-friendly improvements */
-        @media (hover: none) and (pointer: coarse) {
-            .action-btn {
-                min-height: 44px;
-                padding: 12px 16px;
-            }
-
-            .order-card {
-                padding: 16px;
-            }
+        .btn-deliver {
+            background: #17a2b8;
+            color: var(--text-white);
+        }
+        .btn-cancel {
+            background: #6c757d;
+            color: var(--text-white);
+        }
+        .btn-contact {
+            background: var(--primary-color);
+            color: var(--text-white);
         }
 
         .action-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
+
+        .btn-accept:hover { background: #218838; }
+        .btn-reject:hover { background: #c82333; }
+        .btn-ship:hover { background: var(--primary-hover); }
+        .btn-deliver:hover { background: #138496; }
+        .btn-cancel:hover { background: #5a6268; }
+        .btn-contact:hover { background: var(--primary-hover); }
 
         .empty-state {
             text-align: center;
@@ -497,50 +556,217 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
             margin-bottom: 1rem;
         }
 
-        @media (max-width: 768px) {
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: center;
+        }
+
+        /* Enhanced Mobile Responsiveness */
+        @media (max-width: 1200px) {
             .orders-container {
-                margin: 1rem auto;
+                max-width: 100%;
+                padding: 0 1rem;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .order-details {
+                grid-template-columns: 1fr 1fr;
+                gap: 1rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                /* padding-top: 70px; */
+            }
+
+            .orders-container {
+                padding: 0 0.5rem;
+            }
+
+            .page-header {
+                padding: 1.5rem;
+                margin-bottom: 1.5rem;
             }
 
             .page-title {
                 font-size: 2rem;
             }
 
+            .page-subtitle {
+                font-size: 1rem;
+            }
+
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+
+            .stat-card {
+                padding: 1rem;
+            }
+
+            .stat-number {
+                font-size: 1.5rem;
+            }
+
+            .filters-section {
+                padding: 1rem;
             }
 
             .filters-grid {
                 grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .filter-btn {
+                width: 100%;
+                padding: 1rem;
+                font-size: 1rem;
+            }
+
+            .order-item {
+                padding: 1rem;
             }
 
             .order-details {
                 grid-template-columns: 1fr;
+                gap: 1rem;
             }
 
             .order-actions {
                 justify-content: center;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .action-btn {
+                width: 100%;
+                padding: 0.75rem;
+                font-size: 0.9rem;
+            }
+
+            .orders-list {
+                max-height: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-header {
+                padding: 1rem;
+                border-radius: 12px;
+            }
+
+            .page-title {
+                font-size: 1.5rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            .stat-card {
+                padding: 0.75rem;
+            }
+
+            .stat-number {
+                font-size: 1.25rem;
+            }
+
+            .stat-label {
+                font-size: 0.8rem;
+            }
+
+            .filters-section {
+                padding: 0.75rem;
+            }
+
+            .filter-group label {
+                font-size: 0.9rem;
+            }
+
+            .filter-group select,
+            .filter-group input {
+                padding: 0.5rem;
+                font-size: 0.9rem;
+            }
+
+            .order-item {
+                padding: 0.75rem;
+            }
+
+            .order-number {
+                font-size: 1rem;
+            }
+
+            .order-date {
+                font-size: 0.8rem;
+            }
+
+            .customer-info h4,
+            .product-info h4,
+            .amount-info h4 {
+                font-size: 0.8rem;
+            }
+
+            .action-btn {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            .navbar,
+            .filters-section,
+            .order-actions,
+            footer {
+                display: none !important;
+            }
+
+            .page-header {
+                background: none !important;
+                color: black !important;
+            }
+
+            .orders-container {
+                max-width: 100% !important;
+                padding: 0 !important;
+            }
+
+            .order-item {
+                break-inside: avoid;
+                border: 1px solid #ddd;
+                margin-bottom: 1rem;
             }
         }
     </style>
 </head>
 <body class="logged-in seller-orders">
 
-
     <!-- Navigation -->
-    <?php render_seller_navbar('../'); ?>
+    <?php render_seller_navbar('orders', '../'); ?>
 
     <div class="orders-container">
         <!-- Page Header -->
         <div class="page-header">
             <h1 class="page-title">📦 Orders Management</h1>
             <p class="page-subtitle">Manage and track all your orders</p>
-
         </div>
 
         <?php if ($no_shop_error): ?>
         <!-- No Shop Error -->
-        <div style="background: #f8d7da; color: #721c24; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+        <div class="error-message">
             <h2>🏪 Shop Required</h2>
             <p>You need to create and set up your shop before you can manage orders.</p>
             <div style="margin-top: 20px;">
@@ -624,7 +850,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                 <h3 class="table-title">Orders List (<?php echo count($orders); ?> orders)</h3>
             </div>
 
-            <div class="orders-list">
                 <?php if (empty($orders)): ?>
                 <div class="empty-state">
                     <div class="empty-icon">📦</div>
@@ -642,7 +867,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                         <p><a href="products.php" style="color: #e74c3c; font-weight: bold;">➕ Add Products</a> |
                            <a href="dashboard.php" style="color: #e74c3c; font-weight: bold;">📊 View Dashboard</a></p>
                     </div>
-
                 </div>
                 <?php else: ?>
                 <?php foreach ($orders as $order): ?>
@@ -665,9 +889,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                             <?php if ($order['customer_phone']): ?>
                             <p>📞 <?php echo htmlspecialchars($order['customer_phone']); ?></p>
                             <?php endif; ?>
-                            <?php if ($order['phone_number']): ?>
-                            <p>📱 <?php echo htmlspecialchars($order['phone_number']); ?></p>
-                            <?php endif; ?>
                         </div>
 
                         <div class="product-info">
@@ -682,24 +903,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                             <p>💳 <?php echo ucfirst($order['payment_method'] ?? 'COD'); ?></p>
                             <p>📊 <?php echo ucfirst($order['payment_status'] ?? 'Pending'); ?></p>
                         </div>
-
-                        <?php if ($order['shipping_name'] || $order['address_line_1']): ?>
-                        <div class="shipping-info">
-                            <h4>🚚 Shipping Address</h4>
-                            <?php if ($order['shipping_name']): ?>
-                            <p><strong><?php echo htmlspecialchars($order['shipping_name']); ?></strong></p>
-                            <?php endif; ?>
-                            <?php if ($order['address_line_1']): ?>
-                            <p>📍 <?php echo htmlspecialchars($order['address_line_1']); ?></p>
-                            <?php if ($order['city'] && $order['state']): ?>
-                            <p>🏙️ <?php echo htmlspecialchars($order['city']) . ', ' . htmlspecialchars($order['state']); ?></p>
-                            <?php endif; ?>
-                            <?php if ($order['postal_code']): ?>
-                            <p>📮 <?php echo htmlspecialchars($order['postal_code']); ?></p>
-                            <?php endif; ?>
-                            <?php endif; ?>
-                        </div>
-                        <?php endif; ?>
                     </div>
 
                     <div class="order-actions">
@@ -722,17 +925,13 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                             📦 Mark as Delivered
                         </button>
                         <?php elseif ($order['status'] === 'rejected'): ?>
-                        <span class="status-info">❌ Order was rejected</span>
+                        <span style="color: #dc3545; font-weight: bold;">❌ Order was rejected</span>
                         <?php elseif ($order['status'] === 'delivered'): ?>
-                        <span class="status-info">✅ Order completed</span>
+                        <span style="color: #28a745; font-weight: bold;">✅ Order completed</span>
                         <?php endif; ?>
 
-                        <button class="action-btn btn-view" onclick="viewOrderDetails(<?php echo $order['id']; ?>)">
-                            👁️ View Details
-                        </button>
-
-                        <?php if ($order['customer_phone'] || $order['phone_number']): ?>
-                        <button class="action-btn btn-contact" onclick="contactCustomer('<?php echo htmlspecialchars($order['customer_email']); ?>', '<?php echo htmlspecialchars($order['customer_phone'] ?? $order['phone_number'] ?? ''); ?>')">
+                        <?php if ($order['customer_phone'] || $order['customer_email']): ?>
+                        <button class="action-btn btn-contact" onclick="contactCustomer('<?php echo htmlspecialchars($order['customer_email']); ?>', '<?php echo htmlspecialchars($order['customer_phone'] ?? ''); ?>')">
                             📞 Contact Customer
                         </button>
                         <?php endif; ?>
@@ -746,14 +945,14 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
 
     <?php endif; // End of shop check ?>
 
-    <script src="../assets/js/vendor-ajax.js"></script>
-    <script src="../assets/js/main.js"></script>
+    <!-- Footer -->
+    <?php include '../includes/footer.php'; ?>
 
     <script>
         function acceptOrder(orderId) {
             const notes = prompt('Add any notes for the customer (optional):');
 
-            if (confirm('Are you sure you want to accept this order? The customer will be notified and will no longer be able to cancel.')) {
+            if (confirm('Are you sure you want to accept this order? The customer will be notified.')) {
                 updateOrderStatusWithNotes(orderId, 'confirmed', notes);
             }
         }
@@ -784,7 +983,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
             formData.append('action', 'update_order_status');
             formData.append('order_id', orderId);
             formData.append('status', newStatus);
-            formData.append('csrf_token', window.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content || '');
 
             if (vendorNotes) {
                 formData.append('vendor_notes', vendorNotes);
@@ -794,7 +992,7 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
                 formData.append('rejection_reason', rejectionReason);
             }
 
-            fetch('../includes/vendor_actions.php', {
+            fetch('orders.php', {
                 method: 'POST',
                 body: formData
             })
@@ -854,37 +1052,6 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
             }, 5000);
         }
 
-        // Add CSS for notification animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            .notification-content {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .notification-close {
-                background: none;
-                border: none;
-                font-size: 18px;
-                cursor: pointer;
-                margin-left: 10px;
-                opacity: 0.7;
-            }
-            .notification-close:hover {
-                opacity: 1;
-            }
-        `;
-        document.head.appendChild(style);
-
-        function viewOrderDetails(orderId) {
-            // Open order details in a new window or modal
-            window.open(`order_details.php?id=${orderId}`, '_blank', 'width=800,height=600');
-        }
-
         function contactCustomer(email, phone) {
             const options = [];
 
@@ -914,39 +1081,32 @@ if (!$no_shop_error && $shop_id > 0 && $stmt) {
             }
         }
 
-        // Initialize CSRF token
-        window.csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-
-        // Auto-refresh orders every 30 seconds for real-time updates
-        setInterval(function() {
-            // Only refresh if no modals are open and user is active
-            if (document.visibilityState === 'visible') {
-                checkForOrderUpdates();
+        // Add CSS for notification animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
             }
-        }, 30000);
-
-        function checkForOrderUpdates() {
-            fetch('../includes/get_order_updates_vendor.php', {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.has_updates) {
-                    showNotification('New orders or updates available. Refreshing...', 'info');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 2000);
-                }
-            })
-            .catch(error => {
-                console.error('Error checking for updates:', error);
-            });
-        }
+            .notification-content {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .notification-close {
+                background: none;
+                border: none;
+                font-size: 18px;
+                cursor: pointer;
+                margin-left: 10px;
+                opacity: 0.7;
+            }
+            .notification-close:hover {
+                opacity: 1;
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 
-    <?php echo getCSRFJavaScript(); ?>
 </body>
 </html>

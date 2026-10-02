@@ -1,0 +1,25 @@
+{
+  "last_updated": "2026-10-02T15:28:08.500736",
+  "nlp_model": "Rule-Based TF-IDF Sentiment Analyzer",
+  "recommender": "Item-Based Collaborative Filtering (Cosine Similarity)",
+  "forecaster": "Time-Series Moving Average Linear Trend Model",
+  "sample_forecast": {
+    "historical_mean": 15000.0,
+    "projected_growth_pct": 54.17,
+    "forecast_next_periods": [
+      20504.17,
+      22508.33,
+      24512.5
+    ]
+  },
+  "sample_recommendations": [
+    {
+      "product_id": 103,
+      "score": 1.0
+    },
+    {
+      "product_id": 105,
+      "score": 1.0
+    }
+  ]
+}

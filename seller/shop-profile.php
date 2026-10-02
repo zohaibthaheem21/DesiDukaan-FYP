@@ -39,7 +39,7 @@ $user = $stmt->fetch();
     <?php render_seller_navbar('profile'); ?>
 
     <!-- Main Content -->
-    <div class="container seller-dashboard">
+    <div class="container seller-dashboard" style="padding:10px">
         <!-- Profile Header -->
         <div class="dashboard-section">
             <div class="profile-header">

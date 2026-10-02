@@ -1,0 +1,6 @@
+customer_id,recency_days,frequency_orders,monetary_total_pkr,rfm_segment
+501,3,7,18500.0,VIP
+502,8,4,11200.0,Loyal Customer
+503,14,2,4500.0,Potential Loyalist
+504,35,1,2800.0,At Risk
+505,2,6,16400.0,VIP

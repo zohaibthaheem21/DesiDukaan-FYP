@@ -59,7 +59,7 @@ function render_navbar($current_page = '', $base_path = '') {
                 <?php else: ?>
                     <li><a href="<?php echo $base_path; ?>auth/login.php"><?php echo t('login'); ?></a></li>
                 <?php endif; ?>
-
+                <li><a href="<?php echo $base_path; ?>tutorials.php">Tutorials</a></li>
                 <li>
                     <div class="language-toggle">
                         <button type="button" data-lang="en" class="<?php echo get_current_language() === 'en' ? 'active' : ''; ?>">

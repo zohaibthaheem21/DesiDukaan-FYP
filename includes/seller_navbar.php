@@ -61,9 +61,16 @@ function render_seller_navbar($current_page = '', $base_path = '../') {
                 <!-- Notification Bell -->
                 <li class="notification-nav-item">
                     <?php
+                    // Temporarily disabled notification bell to fix orders page
+                    // TODO: Fix notification bell path issues
+                    /*
                     require_once $base_path . 'includes/notification_bell.php';
                     render_notification_bell($_SESSION['user_id'], $base_path);
+                    */
                     ?>
+                    <!-- <div style="padding: 8px;">
+                        <span style="font-size: 20px; color: #2c3e50;">🔔</span>
+                    </div> -->
                 </li>
 
                 <!-- Shop Profile Link -->
@@ -195,7 +202,7 @@ function render_seller_navbar($current_page = '', $base_path = '../') {
 
         @media (max-width: 768px) {
             .navbar-sticky .container {
-                flex-direction: column;
+                flex-direction: row;
                 gap: 1rem;
             }
 
